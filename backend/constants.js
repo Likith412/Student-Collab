@@ -22,10 +22,12 @@ const COMMON_SKILLS = [
 
 // Web Development
 const WEB_DEV_SKILLS = [
-  "React",
+  "React.js",
+  "Vue.js",
+  "Angular",
   "Next.js",
   "Node.js",
-  "Express",
+  "Express.js",
   "PHP",
   "MongoDB",
   "Django",
@@ -36,7 +38,14 @@ const WEB_DEV_SKILLS = [
 ];
 
 // Mobile Apps
-const MOBILE_APP_SKILLS = ["React Native", "Flutter", "Kotlin", "Swift", "C#", "Firebase"];
+const MOBILE_APP_SKILLS = [
+  "React Native",
+  "Flutter",
+  "Kotlin",
+  "Swift",
+  "C#",
+  "Firebase",
+];
 
 // AI/ML
 const AI_ML_SKILLS = ["TensorFlow", "PyTorch", "Scikit-learn", "NumPy", "Pandas"];
@@ -56,14 +65,15 @@ const DATA_SCIENCE_SKILLS = [
 // IoT
 const IOT_SKILLS = ["C", "C++", "MQTT", "Arduino", "Raspberry Pi"];
 
-const SKILLS_LIST =
-  COMMON_SKILLS +
-  WEB_DEV_SKILLS +
-  MOBILE_APP_SKILLS +
-  AI_ML_SKILLS +
-  UI_UX_SKILLS +
-  DATA_SCIENCE_SKILLS +
-  IOT_SKILLS;
+const SKILLS_LIST = [
+  ...COMMON_SKILLS,
+  ...WEB_DEV_SKILLS,
+  ...MOBILE_APP_SKILLS,
+  ...AI_ML_SKILLS,
+  ...UI_UX_SKILLS,
+  ...DATA_SCIENCE_SKILLS,
+  ...IOT_SKILLS,
+];
 
 module.exports = {
   DOMAINS_LIST,

@@ -9,6 +9,7 @@ const applicationSchema = new mongoose.Schema(
       enum: ["pending", "accepted", "rejected", "cancelled"],
       default: "pending",
     },
+    message: { type: String, required: true },
   },
   { timestamps: true, strict: true }
 );

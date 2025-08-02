@@ -1,9 +1,10 @@
-const express = require('express');
-const cors = require('cors');
+const express = require("express");
+const cors = require("cors");
 
-const { connectToMongoDB } = require('./connection');
+const { connectToMongoDB } = require("./connection");
+const userRoutes = require("./routes/user.route");
 
-require('dotenv').config();
+require("dotenv").config();
 
 const app = express();
 
@@ -13,15 +14,19 @@ connectToMongoDB(process.env.MONGO_URI)
   .catch(err => console.error("MongoDB connection error", err));
 
 // Middlewares
-app.use(cors({
-  origin: '*', // Allow all origins
-  methods: 'GET,POST,PUT,DELETE,OPTIONS', // Allow specific methods
-}));
+app.use(
+  cors({
+    origin: "*", // Allow all origins
+    methods: "GET,POST,PUT,DELETE,OPTIONS", // Allow specific methods
+  })
+);
 
 app.use(express.json());
 
-app.get('/api', (req, res) => {
-  res.json({ message: 'Hello World'});  
+app.use("/api/user", userRoutes);
+
+app.get("/api", (req, res) => {
+  res.json({ message: "Hello World" });
 });
 
 app.listen(process.env.PORT, () => {

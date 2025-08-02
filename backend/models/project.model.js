@@ -12,6 +12,7 @@ const projectSchema = new mongoose.Schema(
     },
     requiredSkills: { type: [String], enum: SKILLS_LIST, required: true },
     teamSize: { type: Number, min: 2, max: 6, required: true },
+    teamMembers: { type: [mongoose.Schema.Types.ObjectId], ref: "User" },
     groupLink: String, // whatsapp group link
     status: {
       type: String,
