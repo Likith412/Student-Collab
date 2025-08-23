@@ -6,6 +6,11 @@ const {
   handleGetAllApplications,
 } = require("../controllers/application.controller");
 
+const {
+  authenticateUser,
+  authorizeUserRoles,
+} = require("../middlewares/auth.middleware");
+
 // Get All Applications
 router.get("/", authenticateUser, authorizeUserRoles("admin"), handleGetAllApplications);
 

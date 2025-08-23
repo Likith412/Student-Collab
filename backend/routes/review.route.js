@@ -8,7 +8,10 @@ const {
   handleGetAllReviews,
 } = require("../controllers/review.controller");
 
-const { authenticateUser, authorizeUserRoles } = require("../middlewares/auth");
+const {
+  authenticateUser,
+  authorizeUserRoles,
+} = require("../middlewares/auth.middleware");
 
 router.get("/", authenticateUser, authorizeUserRoles("admin"), handleGetAllReviews);
 router
