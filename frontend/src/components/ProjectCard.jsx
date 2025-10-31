@@ -109,7 +109,7 @@ const ProjectCard = ({
             <Button variant="hero" size="sm" className="flex-1">
               Join Project
             </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/project/1")}>
+            <Button variant="outline" size="sm" onClick={() => navigate("/projects/1")}>
               Learn More
             </Button>
           </>
@@ -118,7 +118,7 @@ const ProjectCard = ({
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => navigate("/project/1")}
+            onClick={() => navigate("/projects/1")}
           >
             View Details
           </Button>

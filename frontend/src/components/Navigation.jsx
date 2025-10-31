@@ -1,6 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useState, useContext } from "react";
 import { Button } from "./ui/button";
+import Cookies from "js-cookie";
+import UserContext from "../contexts/UserContext";
 import {
   Home,
   Search,
@@ -12,19 +14,31 @@ import {
   X,
   LogIn,
   UserPlus,
+  LogOut,
 } from "lucide-react";
 
 function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, setUser } = useContext(UserContext);
 
   const isActive = path => location.pathname === path;
 
+  const handleLogout = () => {
+    // Remove token from cookies
+    Cookies.remove("jwtToken");
+    // Clear user from context
+    setUser(null);
+    // Redirect to home page
+    navigate("/");
+  };
+
   const navItems = [
-    { path: "/", label: "Dashboard", icon: Home },
-    { path: "/discover", label: "Discover", icon: Search },
-    { path: "/projects", label: "My Projects", icon: FolderOpen },
-    { path: "/profile", label: "Profile", icon: User },
+    { path: "/", label: "Dashboard", icon: Home, protected: false },
+    { path: "/discover", label: "Discover", icon: Search, protected: false },
+    { path: "/projects", label: "My Projects", icon: FolderOpen, protected: true },
+    { path: "/profile", label: "Profile", icon: User, protected: true },
   ];
 
   return (
@@ -40,9 +54,12 @@ function Navigation() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden xl:flex items-center space-x-6">
             {navItems.map(item => {
               const Icon = item.icon;
+              if (item.protected && !user) {
+                return null;
+              }
               return (
                 <Link
                   key={item.path}
@@ -60,31 +77,51 @@ function Navigation() {
             })}
           </div>
 
-          {/* Right side actions */}
-          <div className="hidden md:flex items-center space-x-4">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-destructive rounded-full text-xs"></span>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/login">
-                <LogIn className="w-4 h-4 mr-2" />
-                Login
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/register">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Register
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm">
-              <Link to="/projects/create">Post Project</Link>
-            </Button>
+          {/* Right side actions - only show on desktop (xl and above) */}
+          <div className="hidden xl:flex items-center space-x-2 lg:space-x-4">
+            {user ? (
+              <>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="w-5 h-5" />
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-destructive rounded-full text-xs"></span>
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleLogout}>
+                  <LogOut className="w-4 h-4 mr-1 lg:mr-2" />
+                  <span className="hidden lg:inline">Logout</span>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/projects/create">
+                    <span className="hidden lg:inline">Post Project</span>
+                    <span className="lg:hidden">Post</span>
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/login">
+                    <LogIn className="w-4 h-4 mr-1 lg:mr-2" />
+                    <span className="hidden lg:inline">Login</span>
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/register">
+                    <UserPlus className="w-4 h-4 mr-1 lg:mr-2" />
+                    <span className="hidden lg:inline">Register</span>
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/projects/create">
+                    <span className="hidden lg:inline">Post Project</span>
+                    <span className="lg:hidden">Post</span>
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden">
+          {/* Mobile/Tablet menu button */}
+          <div className="xl:hidden">
             <Button
               variant="ghost"
               size="icon"
@@ -99,9 +136,9 @@ function Navigation() {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
+        {/* Mobile/Tablet Navigation */}
         {isMobileMenuOpen && (
-          <div className="md:hidden pb-4">
+          <div className="xl:hidden pb-4">
             <div className="flex flex-col space-y-2">
               {navItems.map(item => {
                 const Icon = item.icon;
@@ -122,24 +159,55 @@ function Navigation() {
                 );
               })}
               <div className="flex flex-col space-y-2 pt-2 border-t">
-                <Button asChild variant="ghost" size="sm" className="w-full">
-                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                    <LogIn className="w-4 h-4 mr-2" />
-                    Login
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <Link to="/register" onClick={() => setIsMobileMenuOpen(false)}>
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Register
-                  </Link>
-                </Button>
-                <Button variant="hero" size="sm" className="w-full">
-                  Join Project
-                </Button>
-                <Button variant="outline" size="sm" className="w-full">
-                  Post Project
-                </Button>
+                {user ? (
+                  <>
+                    <Button variant="ghost" size="sm" className="w-full justify-start">
+                      <Bell className="w-4 h-4 mr-2" />
+                      Notifications
+                      <span className="ml-auto w-2 h-2 bg-destructive rounded-full"></span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={handleLogout}
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout
+                    </Button>
+                    <Button asChild variant="outline" size="sm" className="w-full">
+                      <Link
+                        to="/projects/create"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Post Project
+                      </Link>
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button asChild variant="ghost" size="sm" className="w-full">
+                      <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
+                        <LogIn className="w-4 h-4 mr-2" />
+                        Login
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="sm" className="w-full">
+                      <Link to="/register" onClick={() => setIsMobileMenuOpen(false)}>
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Register
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="sm" className="w-full">
+                      <Link
+                        to="/projects/create"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Post Project
+                      </Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>

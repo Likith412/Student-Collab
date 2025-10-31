@@ -6,6 +6,7 @@ const userRoutes = require("./routes/user.route");
 const projectRoutes = require("./routes/project.route");
 const applicationRoutes = require("./routes/application.route");
 const reviewRoutes = require("./routes/review.route");
+const { authenticateUser } = require("./middlewares/auth.middleware");
 
 require("dotenv").config();
 
@@ -19,8 +20,9 @@ connectToMongoDB(process.env.MONGO_URI)
 // Middlewares
 app.use(
   cors({
-    origin: "*", // Allow all origins
-    methods: "GET,POST,PUT,DELETE,OPTIONS", // Allow specific methods
+    origin: "*", // Allow specific origins
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"], // Allow specific methods
+    credentials: true, // Allow credentials
   })
 );
 
@@ -30,6 +32,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/reviews", reviewRoutes);
+
+app.get("/api/protected", authenticateUser, (req, res) => {
+  return res.status(200).json({ message: "Authenticated", user: req.user });
+});
 
 app.listen(process.env.PORT, () => {
   console.log(`Server is running on http://localhost:${process.env.PORT}`);

@@ -216,18 +216,16 @@ async function handleLogin(req, res) {
       return res.status(400).json({ message: "Invalid password" });
     }
 
+    const payload = { userId: user._id, role: user.role, username: user.username };
     // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "6d",
-      }
-    );
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: "6d",
+    });
 
     return res.status(200).json({
       message: "Login successful",
       token,
+      user: payload,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -246,18 +244,52 @@ async function handleGetMyProfile(req, res) {
       {
         teamMembers: { $in: [userId] },
       },
-      { _id: 1, title: 1, teamSize: 1, status: 1, createdAt: 1, deadline: 1 }
+      {
+        _id: 1,
+        title: 1,
+        teamSize: 1,
+        status: 1,
+        createdAt: 1,
+        deadline: 1,
+        createdBy: 1,
+      }
     ).lean();
 
     const applications = await Application.find({ userId })
       .populate("projectId", "_id title projectId.createdBy")
       .lean();
 
+    // sort applications by accepted, pending, rejected
+    applications.sort((a, b) => {
+      if (a.status === "accepted") {
+        return -1;
+      }
+      return 1;
+    });
+    applications.sort((a, b) => {
+      if (a.status === "pending") {
+        return -1;
+      }
+      return 1;
+    });
+    applications.sort((a, b) => {
+      if (a.status === "rejected") {
+        return -1;
+      }
+      return 1;
+    });
+
     const reviews = await Review.find({ userId })
       .populate("projectId", "_id title projectId.createdBy")
       .lean();
 
+    // sort reviews by createdAt descending
+    reviews.sort((a, b) => {
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+
     const userProfile = {
+      _id: user._id,
       username: user.username,
       email: user.email,
       bio: user.bio,
