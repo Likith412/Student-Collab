@@ -7,6 +7,8 @@ const Project = require("../models/project.model");
 const User = require("../models/user.model");
 const Application = require("../models/application.model");
 
+const { queueNotification } = require("../services/email.service");
+
 async function handleCreateProject(req, res) {
    try {
       if (!req.body) {
@@ -829,6 +831,20 @@ async function handleRemoveTeamMember(req, res) {
          { projectId, userId: memberId, status: "accepted" },
          { status: "cancelled" }
       );
+
+      // Email the member that they were removed. Leaving is their own action,
+      // so nothing is sent for it.
+      if (!isLeavingSelf) {
+         const removedMember = await User.findById(memberId, {
+            username: 1,
+            email: 1,
+         }).lean();
+
+         queueNotification("teamMemberRemoved", removedMember?.email, {
+            memberName: removedMember?.username,
+            projectTitle: project.title,
+         });
+      }
 
       return res.status(200).json({
          message: isLeavingSelf

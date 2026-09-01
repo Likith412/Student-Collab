@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 
 const Application = require("../models/application.model");
 const Project = require("../models/project.model");
+const User = require("../models/user.model");
+
+const { queueNotification } = require("../services/email.service");
 
 async function handleCreateApplication(req, res) {
    try {
@@ -106,6 +109,20 @@ async function handleCreateApplication(req, res) {
          .populate("userId", "username email")
          .populate("projectId", "title domain difficulty")
          .lean();
+
+      // Email the project owner about the new application
+      const owner = await User.findById(project.createdBy, {
+         username: 1,
+         email: 1,
+      }).lean();
+
+      queueNotification("applicationReceived", owner?.email, {
+         ownerName: owner?.username,
+         applicantName: populatedApplication.userId.username,
+         projectTitle: project.title,
+         projectId,
+         applicationMessage: populatedApplication.message,
+      });
 
       return res.status(201).json({
          message: "Application submitted successfully",
@@ -226,6 +243,23 @@ async function handleUpdateApplicationStatus(req, res) {
          .populate("userId", "username email")
          .populate("projectId", "title domain difficulty")
          .lean();
+
+      // Email the applicant about the decision. A withdrawal is the applicant's
+      // own action, so nothing is sent for it.
+      if (status === "accepted") {
+         queueNotification("applicationAccepted", updatedApplication.userId.email, {
+            applicantName: updatedApplication.userId.username,
+            projectTitle: updatedApplication.projectId.title,
+            projectId: updatedApplication.projectId._id,
+         });
+      }
+
+      if (status === "rejected") {
+         queueNotification("applicationRejected", updatedApplication.userId.email, {
+            applicantName: updatedApplication.userId.username,
+            projectTitle: updatedApplication.projectId.title,
+         });
+      }
 
       return res.status(200).json({
          message: "Application status updated successfully",

@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const Review = require("../models/review.model");
 const Project = require("../models/project.model");
 
+const { queueNotification } = require("../services/email.service");
+
 async function handleCreateReview(req, res) {
    try {
       if (!req.body) {
@@ -114,6 +116,15 @@ async function handleCreateReview(req, res) {
          .populate("userId", "username email")
          .populate("projectId", "title domain")
          .lean();
+
+      // Email the reviewed team member
+      queueNotification("reviewReceived", populatedReview.userId.email, {
+         revieweeName: populatedReview.userId.username,
+         revieweeId: reviewedUserId,
+         projectTitle: populatedReview.projectId.title,
+         rating,
+         comment: populatedReview.comment,
+      });
 
       return res.status(201).json({
          message: "Review created successfully",

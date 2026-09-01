@@ -1,23 +1,15 @@
-const bcrypt = require("bcrypt");
-const mongoose = require("mongoose");
+// One-off seed script: creates the single admin account. There is no admin
+// signup route, so this is the only way an admin comes into existence.
 require("dotenv").config();
 
-const User = require("./models/user.model");
+const bcrypt = require("bcrypt");
 
-const { connectToMongoDB } = require("./connection");
-
-// Check if MONGO_URI is defined
-if (!process.env.MONGO_URI) {
-   console.error(
-      "MONGO_URI environment variable is not defined. Please create a .env file with MONGO_URI=mongodb://localhost:27017/student-collab"
-   );
-   process.exit(1);
-}
+const { connectDatabase, disconnectDatabase } = require("../config/database");
+const User = require("../models/user.model");
 
 const createAdmin = async () => {
    try {
-      // Connect to MongoDB
-      await connectToMongoDB(process.env.MONGO_URI);
+      await connectDatabase();
       console.log("Connected to MongoDB");
 
       // Check if admin already exists
@@ -48,8 +40,7 @@ const createAdmin = async () => {
          role: admin.role,
       });
 
-      // Close the connection
-      await mongoose.connection.close();
+      await disconnectDatabase();
       console.log("MongoDB connection closed");
    } catch (error) {
       console.error("Error creating admin:", error);
