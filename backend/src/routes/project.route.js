@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
    authenticateUser,
+   attachUserIfAuthenticated,
    authorizeUserRoles,
 } = require("../middlewares/auth.middleware");
 
@@ -29,8 +30,8 @@ router
    .route("/")
    // Create project
    .post(authenticateUser, authorizeUserRoles("student"), handleCreateProject)
-   // Get all projects
-   .get(handleGetAllProjects);
+   // Get all projects (public; a token, when sent, enables sortBy=best_match)
+   .get(attachUserIfAuthenticated, handleGetAllProjects);
 
 router
    .route("/:projectId")
