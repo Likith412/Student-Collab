@@ -9,6 +9,21 @@ const Application = require("../models/application.model");
 
 const { queueNotification } = require("../services/email.service");
 
+const PROJECT_SORT_OPTIONS = [
+   "most_recent",
+   "deadline_soon",
+   "most_popular",
+   "best_match",
+   "relevance",
+];
+
+const SEARCH_MODES = ["text", "partial"];
+
+// Neutralises regex metacharacters so a search for "C++" is not a broken pattern.
+function escapeRegex(value) {
+   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function handleCreateProject(req, res) {
    try {
       if (!req.body) {
@@ -524,20 +539,48 @@ async function handleGetAllProjects(req, res) {
          page = 1,
          limit = 10,
          search,
+         searchMode = "text",
          domain,
          skills,
          difficulties,
          teamSizeRanges,
          status,
-         sortBy = "most_recent",
+         deadlineFrom,
+         deadlineTo,
+         hideExpired,
+         sortBy,
       } = req.query;
 
-      // Build filter object
-      const filter = {};
+      // Every filter is pushed here and combined under a single $and, so no two
+      // filters can overwrite each other the way two top-level $or keys would.
+      const conditions = [];
 
-      // Search by title (case-insensitive)
-      if (search) {
-         filter.title = { $regex: search, $options: "i" };
+      // Text search over title and description
+      let textSearch = null;
+
+      if (search !== undefined) {
+         if (typeof search !== "string" || search.trim().length === 0) {
+            return res
+               .status(400)
+               .json({ message: "Search must be a non-empty string" });
+         }
+
+         if (!SEARCH_MODES.includes(searchMode)) {
+            return res.status(400).json({
+               message: `Invalid searchMode. Must be one of: ${SEARCH_MODES.join(", ")}`,
+            });
+         }
+
+         const term = search.trim();
+
+         if (searchMode === "text") {
+            // Indexed, relevance-ranked, whole-word search across title and description.
+            textSearch = term;
+         } else {
+            // Substring search, for type-ahead where a partial word must still match.
+            const pattern = new RegExp(escapeRegex(term), "i");
+            conditions.push({ $or: [{ title: pattern }, { description: pattern }] });
+         }
       }
 
       // Filter by single domain
@@ -547,7 +590,7 @@ async function handleGetAllProjects(req, res) {
                message: `Invalid domain. Must be one of: ${DOMAINS_LIST.join(", ")}`,
             });
          }
-         filter.domain = domain;
+         conditions.push({ domain });
       }
 
       // Filter by multiple skills
@@ -569,7 +612,7 @@ async function handleGetAllProjects(req, res) {
          }
 
          // Projects must have ALL the specified skills
-         filter.requiredSkills = { $all: skillsArray };
+         conditions.push({ requiredSkills: { $all: skillsArray } });
       }
 
       // Filter by multiple difficulties
@@ -591,7 +634,7 @@ async function handleGetAllProjects(req, res) {
             });
          }
 
-         filter.difficulty = { $in: difficultiesArray };
+         conditions.push({ difficulty: { $in: difficultiesArray } });
       }
 
       // Filter by team size ranges
@@ -613,9 +656,9 @@ async function handleGetAllProjects(req, res) {
          const teamSizeConditions = rangesArray.map(range => {
             switch (range) {
                case "2-3":
-                  return { $and: [{ teamSize: { $gte: 2 } }, { teamSize: { $lte: 3 } }] };
+                  return { teamSize: { $gte: 2, $lte: 3 } };
                case "4-5":
-                  return { $and: [{ teamSize: { $gte: 4 } }, { teamSize: { $lte: 5 } }] };
+                  return { teamSize: { $gte: 4, $lte: 5 } };
                case "6+":
                   return { teamSize: { $gte: 6 } };
                default:
@@ -623,80 +666,177 @@ async function handleGetAllProjects(req, res) {
             }
          });
 
-         filter.$or = teamSizeConditions;
+         conditions.push({ $or: teamSizeConditions });
       }
 
       // Filter by status
       if (status) {
          const validStatuses = ["open", "in_progress", "closed", "cancelled"];
-         if (validStatuses.includes(status)) {
-            filter.status = status;
+         if (!validStatuses.includes(status)) {
+            return res.status(400).json({
+               message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+            });
          }
+         conditions.push({ status });
       }
 
-      // Build sort object
-      let sort = {};
-      let additionalFilter = {};
+      // Filter by deadline window
+      const deadlineRange = {};
 
-      switch (sortBy) {
-         case "most_recent":
-            sort = { createdAt: -1 };
-            break;
-         case "deadline_soon":
-            sort = { deadline: 1 };
-            break;
-         case "most_popular":
-            // Sort by number of team members (descending)
-            sort = { $expr: { $size: "$teamMembers" } };
-            break;
-         case "best_match":
-            // For best match, prioritize projects matching user's skills
-            const { userId } = req.user;
-            const { skills: userSkills } = await User.findById(userId).lean();
+      if (deadlineFrom) {
+         const from = new Date(deadlineFrom);
+         if (isNaN(from.getTime())) {
+            return res
+               .status(400)
+               .json({ message: "Invalid deadlineFrom. Use an ISO date string" });
+         }
+         deadlineRange.$gte = from;
+      }
 
-            if (userSkills && userSkills.length > 0) {
-               // Projects with more matching skills get higher priority
-               sort = {
-                  $expr: {
-                     $size: {
-                        $setIntersection: ["$requiredSkills", userSkills],
-                     },
-                  },
-                  deadline: 1,
-                  createdAt: -1,
-               };
-            } else {
-               sort = { deadline: 1, createdAt: -1 };
-            }
-            break;
-         default:
-            sort = { createdAt: -1 };
+      if (deadlineTo) {
+         const to = new Date(deadlineTo);
+         if (isNaN(to.getTime())) {
+            return res
+               .status(400)
+               .json({ message: "Invalid deadlineTo. Use an ISO date string" });
+         }
+         deadlineRange.$lte = to;
+      }
+
+      if (deadlineRange.$gte && deadlineRange.$lte && deadlineRange.$gte > deadlineRange.$lte) {
+         return res
+            .status(400)
+            .json({ message: "deadlineFrom must be earlier than deadlineTo" });
+      }
+
+      // Drop projects whose deadline has already passed.
+      const expiredHidden = hideExpired === "true";
+
+      if (expiredHidden) {
+         const now = new Date();
+         deadlineRange.$gte = deadlineRange.$gte && deadlineRange.$gte > now ? deadlineRange.$gte : now;
+      }
+
+      if (Object.keys(deadlineRange).length > 0) {
+         conditions.push({ deadline: deadlineRange });
+      }
+
+      // Relevance is only meaningful alongside a text search, so it becomes the
+      // default there and is rejected everywhere else.
+      const effectiveSortBy = sortBy || (textSearch ? "relevance" : "most_recent");
+
+      if (!PROJECT_SORT_OPTIONS.includes(effectiveSortBy)) {
+         return res.status(400).json({
+            message: `Invalid sortBy. Must be one of: ${PROJECT_SORT_OPTIONS.join(", ")}`,
+         });
+      }
+
+      if (effectiveSortBy === "relevance" && !textSearch) {
+         return res.status(400).json({
+            message: "Sorting by relevance requires search with searchMode=text",
+         });
       }
 
       // Calculate pagination
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
-      const skip = (pageNum - 1) * limitNum;
 
       // Validate pagination parameters
-      if (pageNum < 1 || limitNum < 1 || limitNum > 50) {
+      if (
+         isNaN(pageNum) ||
+         isNaN(limitNum) ||
+         pageNum < 1 ||
+         limitNum < 1 ||
+         limitNum > 50
+      ) {
          return res.status(400).json({
             message:
                "Invalid pagination parameters. Page must be >= 1, limit must be between 1 and 50",
          });
       }
 
-      // Execute query with pagination
-      const projects = await Project.find(filter)
-         .sort(sort)
-         .skip(skip)
-         .limit(limitNum)
-         .populate("createdBy", "username email")
-         .populate("teamMembers", "username email")
-         .lean();
+      const skip = (pageNum - 1) * limitNum;
 
-      // Get total count for pagination info
-      const totalProjects = await Project.countDocuments(filter);
+      // best_match ranks by overlap with the signed-in user's skills. The route is
+      // public, so anonymous visitors fall back to the deadline ordering below.
+      let userSkills = null;
+
+      if (effectiveSortBy === "best_match" && req.user?.userId) {
+         const viewer = await User.findById(req.user.userId, { skills: 1 }).lean();
+         if (viewer?.skills?.length > 0) {
+            userSkills = viewer.skills;
+         }
+      }
+
+      // $text has to sit at the top level of the match, next to the $and clauses.
+      const matchStage = {};
+
+      if (textSearch) {
+         matchStage.$text = { $search: textSearch };
+      }
+      if (conditions.length > 0) {
+         matchStage.$and = conditions;
+      }
+
+      // Fields the sorts below need. Computing them here is what makes sorting by
+      // team size and skill overlap possible at all — .sort() cannot evaluate $expr.
+      const computedFields = {
+         teamMemberCount: { $size: { $ifNull: ["$teamMembers", []] } },
+      };
+
+      if (textSearch) {
+         computedFields.relevanceScore = { $meta: "textScore" };
+      }
+
+      if (userSkills) {
+         computedFields.skillMatchCount = {
+            $size: {
+               $setIntersection: [{ $ifNull: ["$requiredSkills", []] }, userSkills],
+            },
+         };
+      }
+
+      // _id breaks ties so a project never repeats across pages.
+      let sort;
+
+      switch (effectiveSortBy) {
+         case "deadline_soon":
+            sort = { deadline: 1, _id: 1 };
+            break;
+         case "most_popular":
+            sort = { teamMemberCount: -1, createdAt: -1, _id: 1 };
+            break;
+         case "best_match":
+            sort = userSkills
+               ? { skillMatchCount: -1, deadline: 1, createdAt: -1, _id: 1 }
+               : { deadline: 1, createdAt: -1, _id: 1 };
+            break;
+         case "relevance":
+            sort = { relevanceScore: -1, createdAt: -1, _id: 1 };
+            break;
+         default:
+            sort = { createdAt: -1, _id: 1 };
+      }
+
+      const pipeline = [
+         { $match: matchStage },
+         { $addFields: computedFields },
+         { $sort: sort },
+         { $skip: skip },
+         { $limit: limitNum },
+      ];
+
+      const [projects, totalProjects] = await Promise.all([
+         Project.aggregate(pipeline),
+         Project.countDocuments(matchStage),
+      ]);
+
+      // aggregate() skips populate, so the refs are resolved on the plain results.
+      await Project.populate(projects, [
+         { path: "createdBy", select: "username email" },
+         { path: "teamMembers", select: "username email" },
+      ]);
+
       const totalPages = Math.ceil(totalProjects / limitNum);
 
       // Prepare response
@@ -714,6 +854,8 @@ async function handleGetAllProjects(req, res) {
          createdBy: project.createdBy,
          createdAt: project.createdAt,
          updatedAt: project.updatedAt,
+         ...(userSkills && { skillMatchCount: project.skillMatchCount }),
+         ...(textSearch && { relevanceScore: project.relevanceScore }),
       }));
 
       return res.status(200).json({
@@ -729,12 +871,16 @@ async function handleGetAllProjects(req, res) {
          },
          filters: {
             search: search || null,
+            searchMode: search ? searchMode : null,
             domain: domain || null,
             skills: skills || null,
             difficulties: difficulties || null,
             teamSizeRanges: teamSizeRanges || null,
             status: status || null,
-            sortBy,
+            deadlineFrom: deadlineFrom || null,
+            deadlineTo: deadlineTo || null,
+            hideExpired: expiredHidden,
+            sortBy: effectiveSortBy,
          },
       });
    } catch (error) {

@@ -34,6 +34,19 @@ const projectSchema = new mongoose.Schema(
    { timestamps: true, strict: true }
 );
 
+// Weighted text index backing the `search` query param on GET /api/projects.
+// Title matches outrank description matches when results are sorted by relevance.
+projectSchema.index(
+   { title: "text", description: "text" },
+   { weights: { title: 5, description: 1 }, name: "project_text_search" }
+);
+
+// Supporting indexes for the common filter + sort combinations on the list route.
+projectSchema.index({ status: 1, deadline: 1 });
+projectSchema.index({ domain: 1, status: 1 });
+projectSchema.index({ requiredSkills: 1 });
+projectSchema.index({ createdAt: -1 });
+
 const Project = mongoose.model("Project", projectSchema);
 
 module.exports = Project;

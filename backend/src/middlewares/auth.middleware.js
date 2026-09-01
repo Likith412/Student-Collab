@@ -34,6 +34,33 @@ async function authenticateUser(req, res, next) {
    }
 }
 
+// Same as authenticateUser, but never rejects the request. Public routes that
+// personalise their response (project search sorted by `best_match`) use this so
+// a signed-in visitor gets the tailored result and everyone else still gets a page.
+async function attachUserIfAuthenticated(req, _res, next) {
+   const authHeader = req.headers.authorization;
+
+   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return next();
+   }
+
+   const token = authHeader.split(" ")[1];
+
+   try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const dbUser = await User.findById(decoded.userId);
+
+      // Blocked or deleted accounts are treated as anonymous rather than refused.
+      if (dbUser && !(dbUser.role !== "admin" && dbUser.isBlocked)) {
+         req.user = decoded;
+      }
+   } catch {
+      // An expired or malformed token just means "not signed in" here.
+   }
+
+   next();
+}
+
 function authorizeUserRoles(...allowedRoles) {
    return (req, res, next) => {
       if (!req.user || !allowedRoles.includes(req.user.role)) {
@@ -45,4 +72,4 @@ function authorizeUserRoles(...allowedRoles) {
    };
 }
 
-module.exports = { authenticateUser, authorizeUserRoles };
+module.exports = { authenticateUser, attachUserIfAuthenticated, authorizeUserRoles };
